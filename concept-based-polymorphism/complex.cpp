@@ -56,12 +56,12 @@ public:
 };
 
 template <typename Derived, typename... Traits>
-class TraitManager {
+class Op {
 private:
     std::tuple<Traits...> traits;
 
 public:
-    TraitManager() {
+    Op() {
         initTraits(std::index_sequence_for<Traits...>{});
     }
 
@@ -76,21 +76,21 @@ public:
     }
 };
 
-class AddOp : public TraitManager<AddOp, SideEffectsInterface::Trait> {
+class AddOp : public Op<AddOp, SideEffectsInterface::Trait> {
 public:
     bool hasSideEffect() {
         return false;
     }
 };
 
-class SubOp : public TraitManager<SubOp, SideEffectsInterface::Trait> {
+class SubOp : public Op<SubOp, SideEffectsInterface::Trait> {
 public:
     bool hasSideEffect() {
         return false;
     }
 };
 
-class LoadOp : public TraitManager<LoadOp, SideEffectsInterface::Trait> {
+class LoadOp : public Op<LoadOp, SideEffectsInterface::Trait> {
 public:
     bool hasSideEffect() {
         return true;
@@ -98,10 +98,10 @@ public:
 };
 
 template <typename Interface, typename Derived, typename... Traits>
-Interface cast_to_interface(TraitManager<Derived, Traits...>* animal) {
+Interface cast_to_interface(Op<Derived, Traits...>* op) {
     if constexpr ((std::is_same_v<Traits, typename Interface::Trait> || ...)) {
-        auto* vconcept = animal->template getTraitConcept<typename Interface::Trait>();
-        return Interface(animal, vconcept);
+        auto* vconcept = op->template getTraitConcept<typename Interface::Trait>();
+        return Interface(op, vconcept);
     } else {
         throw std::runtime_error("Op does not implement interface");
     }
