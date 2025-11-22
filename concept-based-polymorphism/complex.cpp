@@ -2,126 +2,118 @@
 #include <memory>
 
 struct SideEffectsInterfaceTraits {
-    struct Concept {
-        virtual ~Concept() = default;
-        virtual bool hasSideEffect(void* op) const = 0;
-    };
+  struct Concept {
+    virtual ~Concept() = default;
+    virtual bool hasSideEffect(void *op) const = 0;
+  };
 
-    template <typename ConcreteOp>
-    struct Model : public Concept {
-        bool hasSideEffect(void* op) const override {
-            ConcreteOp* concreteOp = static_cast<ConcreteOp*>(op);
-            return concreteOp->hasSideEffect();
-        }
-    };
+  template <typename ConcreteOp> struct Model : public Concept {
+    bool hasSideEffect(void *op) const override {
+      ConcreteOp *concreteOp = static_cast<ConcreteOp *>(op);
+      return concreteOp->hasSideEffect();
+    }
+  };
 };
 
-template <typename DerivedInterface, typename Traits>
-class BaseInterface {
+template <typename DerivedInterface, typename Traits> class BaseInterface {
 public:
-    class Trait {
-    private:
-        typename Traits::Concept* vconcept;
+  class Trait {
+  private:
+    typename Traits::Concept *vconcept;
 
-    public:
-        template <typename ConcreteType>
-        void initialize() {
-            vconcept = new typename Traits::template Model<ConcreteType>();
-        }
+  public:
+    template <typename ConcreteType> void initialize() {
+      vconcept = new typename Traits::template Model<ConcreteType>();
+    }
 
-        typename Traits::Concept* getConcept() { return vconcept; }
+    typename Traits::Concept *getConcept() { return vconcept; }
 
-        ~Trait() { delete vconcept; }
-    };
+    ~Trait() { delete vconcept; }
+  };
 
 protected:
-    void* entity;
-    typename Traits::Concept* vconcept;
+  void *entity;
+  typename Traits::Concept *vconcept;
 
 public:
-    BaseInterface(void* e, typename Traits::Concept* c)
-        : entity(e), vconcept(c) {}
+  BaseInterface(void *e, typename Traits::Concept *c)
+      : entity(e), vconcept(c) {}
 
-    typename Traits::Concept* getImpl() const { return vconcept; }
-    void* getEntity() const { return entity; }
+  typename Traits::Concept *getImpl() const { return vconcept; }
+  void *getEntity() const { return entity; }
 };
 
-class SideEffectsInterface : public BaseInterface<SideEffectsInterface, SideEffectsInterfaceTraits> {
+class SideEffectsInterface
+    : public BaseInterface<SideEffectsInterface, SideEffectsInterfaceTraits> {
 public:
-    using BaseInterface<SideEffectsInterface, SideEffectsInterfaceTraits>::BaseInterface;
+  using BaseInterface<SideEffectsInterface,
+                      SideEffectsInterfaceTraits>::BaseInterface;
 
-    bool hasSideEffect() const {
-        return getImpl()->hasSideEffect(getEntity());
-    }
+  bool hasSideEffect() const { return getImpl()->hasSideEffect(getEntity()); }
 };
 
-template <typename Derived, typename... Traits>
-class Op {
+template <typename Derived, typename... Traits> class Op {
 private:
-    std::tuple<Traits...> traits;
+  std::tuple<Traits...> traits;
 
 public:
-    Op() {
-        initTraits(std::index_sequence_for<Traits...>{});
-    }
+  Op() { initTraits(std::index_sequence_for<Traits...>{}); }
 
-    template <std::size_t... Is>
-    void initTraits(std::index_sequence<Is...>) {
-        (std::get<Is>(traits).template initialize<Derived>(), ...);
-    }
+  template <std::size_t... Is> void initTraits(std::index_sequence<Is...>) {
+    (std::get<Is>(traits).template initialize<Derived>(), ...);
+  }
 
-    template <typename Trait>
-    auto getTraitConcept() {
-        return std::get<Trait>(traits).getConcept();
-    }
+  template <typename Trait> auto getTraitConcept() {
+    return std::get<Trait>(traits).getConcept();
+  }
 };
 
 class AddOp : public Op<AddOp, SideEffectsInterface::Trait> {
 public:
-    bool hasSideEffect() {
-        return false;
-    }
+  bool hasSideEffect() { return false; }
 };
 
 class SubOp : public Op<SubOp, SideEffectsInterface::Trait> {
 public:
-    bool hasSideEffect() {
-        return false;
-    }
+  bool hasSideEffect() { return false; }
 };
 
 class LoadOp : public Op<LoadOp, SideEffectsInterface::Trait> {
 public:
-    bool hasSideEffect() {
-        return true;
-    }
+  bool hasSideEffect() { return true; }
 };
 
 template <typename Interface, typename Derived, typename... Traits>
-Interface cast_to_interface(Op<Derived, Traits...>* op) {
-    if constexpr ((std::is_same_v<Traits, typename Interface::Trait> || ...)) {
-        auto* vconcept = op->template getTraitConcept<typename Interface::Trait>();
-        return Interface(op, vconcept);
-    } else {
-        throw std::runtime_error("Op does not implement interface");
-    }
+Interface cast_to_interface(Op<Derived, Traits...> *op) {
+  if constexpr ((std::is_same_v<Traits, typename Interface::Trait> || ...)) {
+    auto *vconcept = op->template getTraitConcept<typename Interface::Trait>();
+    return Interface(op, vconcept);
+  } else {
+    throw std::runtime_error("Op does not implement interface");
+  }
 }
 
 int main() {
-    AddOp addOp;
-    SubOp subOp;
-    LoadOp loadOp;
+  AddOp addOp;
+  SubOp subOp;
+  LoadOp loadOp;
 
-    std::cout << "=== Using the interface ===\n";
+  std::cout << "=== Using the interface ===\n";
 
-    SideEffectsInterface addOpSideEffects = cast_to_interface<SideEffectsInterface>(&addOp);
-    std::cout << "Add operation has side effect = " << addOpSideEffects.hasSideEffect() << "\n";
+  SideEffectsInterface addOpSideEffects =
+      cast_to_interface<SideEffectsInterface>(&addOp);
+  std::cout << "Add operation has side effect = "
+            << addOpSideEffects.hasSideEffect() << "\n";
 
-    SideEffectsInterface subOpSideEffects = cast_to_interface<SideEffectsInterface>(&subOp);
-    std::cout << "Sub operation has side effect = " << subOpSideEffects.hasSideEffect() << "\n";
+  SideEffectsInterface subOpSideEffects =
+      cast_to_interface<SideEffectsInterface>(&subOp);
+  std::cout << "Sub operation has side effect = "
+            << subOpSideEffects.hasSideEffect() << "\n";
 
-    SideEffectsInterface loadOpSideEffects = cast_to_interface<SideEffectsInterface>(&loadOp);
-    std::cout << "Load operation has side effect = " << loadOpSideEffects.hasSideEffect() << "\n";
+  SideEffectsInterface loadOpSideEffects =
+      cast_to_interface<SideEffectsInterface>(&loadOp);
+  std::cout << "Load operation has side effect = "
+            << loadOpSideEffects.hasSideEffect() << "\n";
 
-    return 0;
+  return 0;
 }
