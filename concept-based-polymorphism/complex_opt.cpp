@@ -4,7 +4,9 @@
 #include <tuple>
 #include <stdexcept>
 #include <optional>
+#include <memory>
 
+// Actual state of an Operation lives in this
 struct Operation {
   std::string name;
   std::vector<int> operands;
@@ -23,6 +25,26 @@ public:
   static constexpr bool has_trait = (std::is_same_v<T, Traits> || ...);
 };
 
+// Base Interface Class
+// -----------------------------------------------------------------------------
+template <typename DerivedInterface, typename TraitsType> class BaseInterface {
+protected:
+  void *entity;
+  typename TraitsType::Concept *vconcept;
+
+public:
+  using Trait = TraitsType;
+
+  BaseInterface(void *e, typename TraitsType::Concept *c)
+      : entity(e), vconcept(c) {}
+
+  typename TraitsType::Concept *getImpl() const { return vconcept; }
+  void *getEntity() const { return entity; }
+};
+// -----------------------------------------------------------------------------
+
+// Traits and Interfaces
+// -----------------------------------------------------------------------------
 struct SideEffectsInterfaceTraits {
   struct Concept {
     virtual ~Concept() = default;
@@ -38,21 +60,6 @@ struct SideEffectsInterfaceTraits {
   };
 };
 
-template <typename DerivedInterface, typename TraitsType> class BaseInterface {
-protected:
-  void *entity;
-  typename TraitsType::Concept *vconcept;
-
-public:
-  using Trait = TraitsType;
-
-  BaseInterface(void *e, typename TraitsType::Concept *c)
-      : entity(e), vconcept(c) {}
-
-  typename TraitsType::Concept *getImpl() const { return vconcept; }
-  void *getEntity() const { return entity; }
-};
-
 class SideEffectsInterface
     : public BaseInterface<SideEffectsInterface, SideEffectsInterfaceTraits> {
 public:
@@ -61,8 +68,11 @@ public:
 
   bool hasSideEffect() const { return getImpl()->hasSideEffect(getEntity()); }
 };
+// -----------------------------------------------------------------------------
 
 
+// Views
+// -----------------------------------------------------------------------------
 class AddOp : public Op<AddOp, SideEffectsInterfaceTraits> {
 public:
   using Op::Op;
@@ -83,18 +93,22 @@ public:
 
   bool hasSideEffect() { return true; }
 };
+// -----------------------------------------------------------------------------
 
 
+// Factory function to create operations
 template <typename ConcreteOp, typename... Args>
-ConcreteOp createOp(Args... args) {
-  Operation* op = new Operation();
+std::unique_ptr<Operation> createOp(Args... args) {
+  auto op = std::make_unique<Operation>();
   op->name = ConcreteOp::name;
 
   (op->operands.push_back(args), ...);
 
-  return ConcreteOp(op);
+  return op;
 }
 
+// Casting
+// -----------------------------------------------------------------------------
 template <typename Interface, typename Derived, typename... Traits>
 Interface cast(Op<Derived, Traits...> op) {
   using RequiredTrait = typename Interface::Trait;
@@ -124,44 +138,42 @@ std::optional<Interface> dyn_cast(Op<Derived, Traits...> op) {
 
 template <typename ConcreteView>
 std::optional<ConcreteView> dyn_cast_view(Operation* op) {
+  // usually TypeID or similar mechanism would be used
   if (op->name == ConcreteView::name) {
     return ConcreteView(op);
   }
   return std::nullopt;
 }
+// -----------------------------------------------------------------------------
 
 int main() {
-  // Views on stack, Storage on heap
-  auto add1 = createOp<AddOp>(10, 20);
-  auto load1 = createOp<LoadOp>(0xA000);
-  auto add2 = createOp<AddOp>(30, 40);
+  std::vector<std::unique_ptr<Operation>> block;
 
-  // We store the raw pointers. This is a "Type Erased" list.
-  std::vector<Operation*> block;
-
-  block.push_back(add1.getOperation());
-  block.push_back(load1.getOperation());
-  block.push_back(add2.getOperation());
+  block.push_back(createOp<AddOp>(10, 20));
+  block.push_back(createOp<LoadOp>(0xA000));
+  block.push_back(createOp<AddOp>(30, 40));
 
   std::cout << "=== Iterating over Generic Operations ===\n";
 
-  for (Operation* rawOp : block) {
+  for (const auto& ownedOp : block) {
+    Operation* rawOp = ownedOp.get();
     std::cout << "Processing op: " << rawOp->name << " -> ";
 
     if (auto addView = dyn_cast_view<AddOp>(rawOp)) {
       std::cout << "Math: " << addView->getLHS() << " + " << addView->getRHS();
+      SideEffectsInterface iface = cast<SideEffectsInterface>(*addView);
+      if (!iface.hasSideEffect()) std::cout << " [Pure]";
     }
     else if (auto loadView = dyn_cast_view<LoadOp>(rawOp)) {
-      std::cout << "Memory Access: " << std::hex << loadView->getAddress();
+      std::cout << "Memory Access: " << std::hex << loadView->getAddress() << std::dec;
+      SideEffectsInterface iface = cast<SideEffectsInterface>(*loadView);
+      if (iface.hasSideEffect()) std::cout << " [Side Effect]";
     }
     else {
       std::cout << "Unknown Op";
     }
     std::cout << "\n";
   }
-
-  // Cleanup
-  for (Operation* op : block) delete op;
 
   return 0;
 }
