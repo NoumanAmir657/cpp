@@ -122,25 +122,46 @@ std::optional<Interface> dyn_cast(Op<Derived, Traits...> op) {
   }
 }
 
+template <typename ConcreteView>
+std::optional<ConcreteView> dyn_cast_view(Operation* op) {
+  if (op->name == ConcreteView::name) {
+    return ConcreteView(op);
+  }
+  return std::nullopt;
+}
+
 int main() {
-  auto addOp = createOp<AddOp>(10, 20);
+  // Views on stack, Storage on heap
+  auto add1 = createOp<AddOp>(10, 20);
+  auto load1 = createOp<LoadOp>(0xA000);
+  auto add2 = createOp<AddOp>(30, 40);
 
-  auto loadOp = createOp<LoadOp>(123456789);
+  // We store the raw pointers. This is a "Type Erased" list.
+  std::vector<Operation*> block;
 
-  std::cout << "=== Inspecting Data through Views ===\n";
-  std::cout << "AddOp: " << addOp.getLHS() << " + " << addOp.getRHS() << "\n";
-  std::cout << "LoadOp Addr: " << loadOp.getAddress() << "\n";
+  block.push_back(add1.getOperation());
+  block.push_back(load1.getOperation());
+  block.push_back(add2.getOperation());
 
-  std::cout << "\n=== Using Interfaces ===\n";
+  std::cout << "=== Iterating over Generic Operations ===\n";
 
-  SideEffectsInterface iface1 = cast<SideEffectsInterface>(addOp);
-  std::cout << "Add SideEffect: " << iface1.hasSideEffect() << "\n";
+  for (Operation* rawOp : block) {
+    std::cout << "Processing op: " << rawOp->name << " -> ";
 
-  SideEffectsInterface iface2 = cast<SideEffectsInterface>(loadOp);
-  std::cout << "Load SideEffect: " << iface2.hasSideEffect() << "\n";
+    if (auto addView = dyn_cast_view<AddOp>(rawOp)) {
+      std::cout << "Math: " << addView->getLHS() << " + " << addView->getRHS();
+    }
+    else if (auto loadView = dyn_cast_view<LoadOp>(rawOp)) {
+      std::cout << "Memory Access: " << std::hex << loadView->getAddress();
+    }
+    else {
+      std::cout << "Unknown Op";
+    }
+    std::cout << "\n";
+  }
 
-  delete addOp.getOperation();
-  delete loadOp.getOperation();
+  // Cleanup
+  for (Operation* op : block) delete op;
 
   return 0;
 }
