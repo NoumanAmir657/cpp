@@ -98,6 +98,8 @@ int main() {
   SubOp subOp;
   LoadOp loadOp;
 
+  std::cout << "Size of AddOp: " << sizeof(addOp) << " bytes (empty class)\n";
+
   std::cout << "=== Using the interface ===\n";
 
   SideEffectsInterface addOpSideEffects =
